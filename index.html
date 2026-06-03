@@ -314,8 +314,31 @@ function classify(desc) {
 async function loadData() {
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning');
+  setLoaderProgress(10);
+  try {
+    const res = await fetch(SHEET_CSV_URL + '&cachebust=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    setLoaderProgress(60);
+    const text = await res.text();
+    if (text.includes('<!DOCTYPE') || text.includes('<html')) throw new Error('Formato incorrecto');
+    setLoaderProgress(80);
+    const rows = parseCSV(text);
+    const parsed = rows
+      .filter(r => r['FECHA'] && r['FECHA'].trim() && r['TOTAL'] && !isNaN(parseFloat(r['TOTAL'].replace(/[$,\s]/g,''))))
+      .map(r => ({
+        fecha: r['FECHA'].trim(), tipo: (r['TIPO DOC']||'').trim(),
+        num: (r['Número de Control']||'').trim(), receptor: (r['Receptor']||'').trim(),
+        desc: (r['Descripción']||'').trim(),
+        total: parseFloat(r['TOTAL'].replace(/[$,\s]/g,'')),
+        saldo: parseFloat((r['Saldo de Cliente']||'0').replace(/[$,\s]/g,''))||0,
+        pago: (r['PAGO']||'').trim(), cat: classify(r['Descripción']||''),
+      }));
+    if (parsed.length > 0) allData = parsed;
+    else throw new Error('Sin datos');
+  } catch(err) {
+    loadFallback();
+  }
   setLoaderProgress(100);
-  loadFallback();
   document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-SV',{hour:'2-digit',minute:'2-digit'});
   document.getElementById('fecha-footer').textContent = new Date().toLocaleDateString('es-SV',{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('badge-count').textContent = allData.length + ' facturas';
@@ -329,32 +352,32 @@ function setLoaderProgress(pct) { document.getElementById('loader-fill').style.w
 
 function loadFallback() {
   allData = [
-    {fecha:"2025-02-03",tipo:"FACTURA",num:"00010",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACION STRIPES SERVICIO DE COMERCIALIZACION",total:170,pago:"SI",cat:"com"},
-    {fecha:"2025-02-03",tipo:"FACTURA",num:"00011",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACIN SIN PLAN DE DATOS",total:120,pago:"SI",cat:"com"},
-    {fecha:"2025-02-03",tipo:"FACTURA",num:"00012",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE ENTREGA FINAL CARGADORES 5.5 MT",total:115,pago:"SI",cat:"inst"},
-    {fecha:"2025-03-10",tipo:"FACTURA",num:"00013",receptor:"POWER MAS SPA",desc:"PLATAFORMA PARA LA ADMINISTRACION DE ESTACIONES DE RECARGA PARA VEHICULOS ELECTRICOS PAQUETE PREMIUM SERVICIO DE COMERCIALIZACION 10%",total:33000,pago:"SI",cat:"com"},
-    {fecha:"2025-03-12",tipo:"FACTURA",num:"00014",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACION STRIPE, SERVICIO DE COMERCIALIZACION, SERVICIO DE ENTREGA FINAL CARGADORES 5.5 MT",total:2975,pago:"SI",cat:"com"},
-    {fecha:"2025-03-12",tipo:"FACTURA",num:"00015",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACION SIN PLAN DE DATOS",total:840,pago:"SI",cat:"com"},
-    {fecha:"2025-04-21",tipo:"FACTURA",num:"00016",receptor:"POWER MAS SPA",desc:"500 TARJETAS RFID POWER PLUS - ENVÍO",total:341,pago:"SI",cat:"inst"},
-    {fecha:"2025-05-07",tipo:"FACTURA",num:"00018",receptor:"DIEGO HERNANDEZ",desc:"EAUS40-L01-22-H - MOD Corriente Alterna - J1772 - 9.6 kW, Conectividad y plataforma CargFacilEV - Anual, Configuración Stripe por estación de recarga",total:3460,pago:"SI",cat:"inst"},
-    {fecha:"2025-07-21",tipo:"FACTURA",num:"00020",receptor:"DIEGO HERNANDEZ",desc:"Estacion de recarga para vehiculos electricos",total:477.50,pago:"SI",cat:"inst"},
-    {fecha:"2025-08-12",tipo:"FACTURA",num:"00022",receptor:"EMANUEL VELEZ",desc:"EAUS48-L01-22-H-MOD COMERCIAL J-1772 11.5KW",total:516.80,pago:"SI",cat:"inst"},
-    {fecha:"2025-08-21",tipo:"CREDITO FISCAL",num:"DTE:M001P001-0000001",receptor:"MOTORES DEL ASIA, S.A. DE C.V.",desc:"INSTALACIÓN DE ESTACIÓN DE RECARGA PARA VEHICULOS ELECTRICOS 7.2 kW",total:747.21,pago:"SI",cat:"inst"},
-    {fecha:"2025-08-21",tipo:"CREDITO FISCAL",num:"DTE:M001P001-0000002",receptor:"MOTORES DEL ASIA, S.A. DE C.V.",desc:"PARTE no. ELA007C03LAGS - ESTACIÓN DE RECARGA 7.6 kW-GBT ADAPTADOR GBT A CCS2",total:891.57,pago:"SI",cat:"inst"},
-    {fecha:"2025-08-28",tipo:"FACTURA",num:"DTE:M001P001-0000001",receptor:"DIEGO HERNANDEZ",desc:"EAUS40-L01-22-H-MOD Estación de recarga para vehículos eléctricos J1772-32A-7.5kW 2 años de garantía de fabrica SN # 654310067, Conectividad y plataforma CargFacilEV - Anual, Configuración Stripe por estación de recarga y SERVICIO DE ENVÍO",total:925,pago:"SI",cat:"inst"},
-    {fecha:"2025-09-04",tipo:"FACTURA",num:"DTE:M001P001-0000002",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 - SERVICIO DE RECARGA PARA VEHÍCULOS CUOTA 1/36 TORRE UNIVERSAL SEPT- 2025",total:510,pago:"SI",cat:"com"},
-    {fecha:"2025-10-02",tipo:"FACTURA",num:"DTE:M001P001-0000003",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 2/36 TORRE UNIVERSAL OCTUBRE 2025",total:510,pago:"SI",cat:"com"},
-    {fecha:"2025-11-01",tipo:"FACTURA",num:"DTE:M001P001-0000004",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 3/36 TORRE UNIVERSAL NOVIEMBRE 2025",total:510,pago:"SI",cat:"com"},
-    {fecha:"2025-11-20",tipo:"FACTURA",num:"DTE:M001P001-0000005",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACIÓN STRIPE, SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACIÓN SIN PLAN DE DATOS, SERVICIO DE COMERCIALIZACIÓN y SERVICIO DE ENTREGA FINAL CARGADORES 5.5 MT",total:545,pago:"SI",cat:"com"},
-    {fecha:"2025-11-25",tipo:"FACTURA",num:"DTE:M001P001-00000010",receptor:"CONSTRUCCIONES Y DESARROLLOS MILDFER, S.A. DE C.V.",desc:"TA-DC-60FD-60kW DC Charging Station CCS1- CCS1, TA-DC-120FD-120kW DC Charging Station CCS1 - CCS1",total:22200,pago:"Falta el 30% que sera cancelado mayo 2026",cat:"inst"},
-    {fecha:"2025-11-25",tipo:"FACTURA",num:"DTE:M001P001-00000011",receptor:"CONSTRUCCIONES Y DESARROLLOS MILDFER, S.A. DE C.V.",desc:"TA-DC-60FD-60kW DC Charging Station CCS1- CCS1, TA-DC-120FD-120kW DC Charging Station CCS1- CCS1",total:22200,pago:"Falta el 30% que sera cancelado mayo 2026",cat:"inst"},
-    {fecha:"2025-12-17",tipo:"FACTURA",num:"DTE:M001P001-00000012",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 4/36 TORRE UNIVERSAL DICIEMBRE 2025",total:510,pago:"SI",cat:"com"},
-    {fecha:"2026-01-09",tipo:"FACTURA",num:"DTE:M001P001-0000001",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 5/36 TORRE UNIVERSAL ENERO 2026",total:510,pago:"SI",cat:"com"},
-    {fecha:"2026-01-28",tipo:"FACTURA",num:"DTE:M001P001-0000002",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACIÓN STRIPE, SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACION CON PLAN DE DATOS - ALEDEN PUERTA GDL, SERVICIO DE COMERCIALIZACION y SERVICIO DE ENTREGA FINAL CARGADORES 5.5 mt",total:605,pago:"SI",cat:"com"},
-    {fecha:"2026-02-02",tipo:"FACTURA",num:"DTE:M001P001-0000003",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 6/36 TORRE UNIVERSAL FEBRERO 2026",total:510,pago:"SI",cat:"com"},
-    {fecha:"2026-03-05",tipo:"FACTURA",num:"DTE:M001P001-0000004",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 7/36 TORRE UNIVERSAL MARZO 2026",total:510,pago:"SI",cat:"com"},
-    {fecha:"2026-04-06",tipo:"FACTURA",num:"DTE:M001P001-0000006",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 8/36 TORRE UNIVERSAL ABRIL 2026",total:510,pago:"SI",cat:"com"},
-    {fecha:"2026-05-09",tipo:"FACTURA",num:"DTE:M001P001-0000005",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 9/36 TORRE UNIVERSAL MAYO 2026",total:510,pago:"SI",cat:"com"},
+    {fecha:"2025-02-03",tipo:"FACTURA",num:"00010",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACION STRIPES SERVICIO DE COMERCIALIZACION",total:170,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-02-03",tipo:"FACTURA",num:"00011",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACIN SIN PLAN DE DATOS",total:120,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-02-03",tipo:"FACTURA",num:"00012",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE ENTREGA FINAL CARGADORES 5.5 MT",total:115,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-03-10",tipo:"FACTURA",num:"00013",receptor:"POWER MAS SPA",desc:"PLATAFORMA PARA LA ADMINISTRACION DE ESTACIONES DE RECARGA PARA VEHICULOS ELECTRICOS PAQUETE PREMIUM SERVICIO DE COMERCIALIZACION 10%",total:33000,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-03-12",tipo:"FACTURA",num:"00014",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACION STRIPE, SERVICIO DE COMERCIALIZACION, SERVICIO DE ENTREGA FINAL CARGADORES 5.5 MT",total:2975,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-03-12",tipo:"FACTURA",num:"00015",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACION SIN PLAN DE DATOS",total:840,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-04-21",tipo:"FACTURA",num:"00016",receptor:"POWER MAS SPA",desc:"500 TARJETAS RFID POWER PLUS - ENVÍO",total:341,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-05-07",tipo:"FACTURA",num:"00018",receptor:"DIEGO HERNANDEZ",desc:"EAUS40-L01-22-H - MOD Corriente Alterna - J1772 - 9.6 kW, Conectividad y plataforma CargFacilEV - Anual, Configuración Stripe por estación de recarga",total:3460,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-07-21",tipo:"FACTURA",num:"00020",receptor:"DIEGO HERNANDEZ",desc:"Estacion de recarga para vehiculos electricos",total:477.50,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-08-12",tipo:"FACTURA",num:"00022",receptor:"EMANUEL VELEZ",desc:"EAUS48-L01-22-H-MOD COMERCIAL J-1772 11.5KW",total:516.80,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-08-21",tipo:"CREDITO FISCAL",num:"DTE:M001P001-0000001",receptor:"MOTORES DEL ASIA, S.A. DE C.V.",desc:"INSTALACIÓN DE ESTACIÓN DE RECARGA PARA VEHICULOS ELECTRICOS 7.2 kW",total:747.21,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-08-21",tipo:"CREDITO FISCAL",num:"DTE:M001P001-0000002",receptor:"MOTORES DEL ASIA, S.A. DE C.V.",desc:"PARTE no. ELA007C03LAGS - ESTACIÓN DE RECARGA 7.6 kW-GBT ADAPTADOR GBT A CCS2",total:891.57,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-08-28",tipo:"FACTURA",num:"DTE:M001P001-0000001",receptor:"DIEGO HERNANDEZ",desc:"EAUS40-L01-22-H-MOD Estación de recarga para vehículos eléctricos J1772-32A-7.5kW 2 años de garantía de fabrica SN # 654310067, Conectividad y plataforma CargFacilEV - Anual, Configuración Stripe por estación de recarga y SERVICIO DE ENVÍO",total:925,saldo:0,pago:"SI",cat:"inst"},
+    {fecha:"2025-09-04",tipo:"FACTURA",num:"DTE:M001P001-0000002",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 - SERVICIO DE RECARGA PARA VEHÍCULOS CUOTA 1/36 TORRE UNIVERSAL SEPT- 2025",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-10-02",tipo:"FACTURA",num:"DTE:M001P001-0000003",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 2/36 TORRE UNIVERSAL OCTUBRE 2025",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-11-01",tipo:"FACTURA",num:"DTE:M001P001-0000004",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 3/36 TORRE UNIVERSAL NOVIEMBRE 2025",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-11-20",tipo:"FACTURA",num:"DTE:M001P001-0000005",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACIÓN STRIPE, SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACIÓN SIN PLAN DE DATOS, SERVICIO DE COMERCIALIZACIÓN y SERVICIO DE ENTREGA FINAL CARGADORES 5.5 MT",total:545,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2025-11-25",tipo:"FACTURA",num:"DTE:M001P001-00000010",receptor:"CONSTRUCCIONES Y DESARROLLOS MILDFER, S.A. DE C.V.",desc:"TA-DC-60FD-60kW DC Charging Station CCS1- CCS1, TA-DC-120FD-120kW DC Charging Station CCS1 - CCS1",total:22200,saldo:6660,pago:"Falta el 30% que sera cancelado mayo 2026",cat:"inst"},
+    {fecha:"2025-11-25",tipo:"FACTURA",num:"DTE:M001P001-00000011",receptor:"CONSTRUCCIONES Y DESARROLLOS MILDFER, S.A. DE C.V.",desc:"TA-DC-60FD-60kW DC Charging Station CCS1- CCS1, TA-DC-120FD-120kW DC Charging Station CCS1- CCS1",total:22200,saldo:6660,pago:"Falta el 30% que sera cancelado mayo 2026",cat:"inst"},
+    {fecha:"2025-12-17",tipo:"FACTURA",num:"DTE:M001P001-00000012",receptor:"Smart Building Solutions S.A",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 4/36 TORRE UNIVERSAL DICIEMBRE 2025",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2026-01-09",tipo:"FACTURA",num:"DTE:M001P001-0000001",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 5/36 TORRE UNIVERSAL ENERO 2026",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2026-01-28",tipo:"FACTURA",num:"DTE:M001P001-0000002",receptor:"IGNACIO DE LOYOLA RUIZ IÑIGUEZ",desc:"SERVICIO DE CONFIGURACIÓN STRIPE, SERVICIO ANUAL DE PLATAFORMA DE ADMINISTRACION CON PLAN DE DATOS - ALEDEN PUERTA GDL, SERVICIO DE COMERCIALIZACION y SERVICIO DE ENTREGA FINAL CARGADORES 5.5 mt",total:605,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2026-02-02",tipo:"FACTURA",num:"DTE:M001P001-0000003",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 6/36 TORRE UNIVERSAL FEBRERO 2026",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2026-03-05",tipo:"FACTURA",num:"DTE:M001P001-0000004",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 7/36 TORRE UNIVERSAL MARZO 2026",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2026-04-06",tipo:"FACTURA",num:"DTE:M001P001-0000006",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 8/36 TORRE UNIVERSAL ABRIL 2026",total:510,saldo:0,pago:"SI",cat:"com"},
+    {fecha:"2026-05-09",tipo:"FACTURA",num:"DTE:M001P001-0000005",receptor:"Smart Building Solutions S.A.",desc:"Contrato CR202508 SERVICIOS DE RECARGA PARA VEHICULOS ELECTRICOS CUOTA 9/36 TORRE UNIVERSAL MAYO 2026",total:510,saldo:0,pago:"SI",cat:"com"},
   ];
 }
 
@@ -464,8 +487,8 @@ function updateKPIs() {
   const data  = filtered();
   const total  = data.reduce((s,r)=>s+r.total,0);
   const pagado = data.filter(r=>r.pago==='SI').reduce((s,r)=>s+r.total,0);
-  const pend   = data.filter(r=>r.pago!=='SI').reduce((s,r)=>s+r.total,0);
-  const pendN  = data.filter(r=>r.pago!=='SI').length;
+  const pend   = data.reduce((s,r)=>s+(r.saldo||0),0);
+  const pendN  = data.filter(r=>(r.saldo||0)>0).length;
   const pagN   = data.filter(r=>r.pago==='SI').length;
   const tipos  = [...new Set(data.map(r=>r.tipo))].join(' · ');
   const fmt    = v => '$'+v.toLocaleString('es-SV',{minimumFractionDigits:2,maximumFractionDigits:2});
