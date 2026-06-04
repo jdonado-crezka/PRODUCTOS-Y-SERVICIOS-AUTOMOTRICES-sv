@@ -3,9 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Facturas — Carga Vehículos Eléctricos 2025–2026</title>
+<title>Dashboard Facturas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="config.js"></script>
+<script>
+  document.title = CONFIG.pageTitle;
+  Object.entries(CONFIG.colors).forEach(([k, v]) => document.documentElement.style.setProperty('--' + k, v));
+</script>
 <style>
   :root {
     --bg:        #f4f7fb;
@@ -190,7 +195,7 @@
 
 <!-- LOADER -->
 <div id="loader">
-  <div class="loader-icon">⚡</div>
+  <div class="loader-icon" id="loader-icon"></div>
   <div class="loader-bar"><div class="loader-bar-fill" id="loader-fill"></div></div>
   <div class="loader-text">Cargando datos desde Google Sheets…</div>
 </div>
@@ -199,10 +204,10 @@
 
   <header>
     <div class="brand">
-      <div class="brand-icon">⚡</div>
+      <div class="brand-icon" id="brand-icon"></div>
       <div>
-        <h1>Facturas <span>EV Charging</span></h1>
-        <div class="subtitle">Comercialización &amp; Servicios de Instalación — 2025 / 2026</div>
+        <h1 id="brand-title"></h1>
+        <div class="subtitle" id="brand-subtitle"></div>
       </div>
     </div>
     <div class="header-right">
@@ -214,16 +219,11 @@
     </div>
   </header>
 
-
   <div class="filter-bar">
     <span class="filter-label">Año:</span>
-    <button class="filter-btn active" data-year="all"  onclick="setYear('all')">Todos</button>
-    <button class="filter-btn"        data-year="2025" onclick="setYear('2025')">2025</button>
-    <button class="filter-btn"        data-year="2026" onclick="setYear('2026')">2026</button>
+    <span id="year-filters"></span>
     <span class="filter-label" style="margin-left:16px">Categoría:</span>
-    <button class="filter-btn active" data-cat="all"  onclick="setCat('all')">Todas</button>
-    <button class="filter-btn"        data-cat="inst" onclick="setCat('inst')">Instalación/Equipo</button>
-    <button class="filter-btn"        data-cat="com"  onclick="setCat('com')">Comercialización</button>
+    <span id="cat-filters"></span>
     <button class="refresh-btn" id="refresh-btn" onclick="loadData()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Actualizar
@@ -246,9 +246,7 @@
     <div class="chart-card"><div class="chart-title">Estado de Pago</div><canvas id="chartPago"></canvas></div>
   </div>
 
-  <div class="obs-note">
-    ⚠️ <strong>Nota fiscal:</strong> Todas las facturas son <strong>NO SUJETAS</strong>. Las únicas gravadas son los Créditos Fiscales (CCF) emitidos a MOTORES DEL ASIA, S.A. DE C.V.
-  </div>
+  <div class="obs-note" id="fiscal-note"></div>
 
   <div class="table-card">
     <div class="table-header-row">
@@ -277,13 +275,72 @@
   </div>
 
   <footer>
-    Datos en vivo desde <span>Google Sheets</span> · Actualizado: <span id="fecha-footer">—</span> · Dashboard generado por Crezka Firm
+    Datos en vivo desde <span>Google Sheets</span> · Actualizado: <span id="fecha-footer">—</span> · Dashboard generado por <span id="footer-by"></span>
   </footer>
 </div>
 
 <script>
-const SHEET_CSV_URL = 'https://script.google.com/macros/s/AKfycbzHETPZDbBjnv3Lsjzx_i3T-7Qjboq7Kp81g_KSRdZtrNOPfQlVbysPTd_WX3qr_vvU/exec';
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+const fmt = v => CONFIG.currency + v.toLocaleString(CONFIG.locale, {minimumFractionDigits:2, maximumFractionDigits:2});
+
+function buildMonthsOrder() {
+  const months = [];
+  for (let y = CONFIG.startYear; y <= CONFIG.endYear; y++)
+    for (let m = 1; m <= 12; m++)
+      months.push(`${y}-${String(m).padStart(2,'0')}`);
+  return months;
+}
+
+function monthLabel(ym) {
+  const [y, m] = ym.split('-');
+  return new Date(+y, +m - 1, 1)
+    .toLocaleDateString(CONFIG.locale, {month:'short', year:'2-digit'})
+    .replace(/\./g, '')
+    .replace(/^./, c => c.toUpperCase());
+}
+
+const MONTHS_ORDER = buildMonthsOrder();
+
+// ── Apply config to DOM ───────────────────────────────────────────────────────
+
+function applyConfig() {
+  document.getElementById('loader-icon').textContent  = CONFIG.brandIcon;
+  document.getElementById('brand-icon').textContent   = CONFIG.brandIcon;
+  document.getElementById('brand-title').innerHTML    = `${CONFIG.brandName} <span>${CONFIG.brandHighlight}</span>`;
+  document.getElementById('brand-subtitle').innerHTML = CONFIG.subtitle;
+  document.getElementById('footer-by').textContent    = CONFIG.footerBy;
+
+  const note = document.getElementById('fiscal-note');
+  if (CONFIG.fiscalNote) {
+    note.innerHTML = `⚠️ <strong>Nota fiscal:</strong> ${CONFIG.fiscalNote}`;
+  } else {
+    note.style.display = 'none';
+  }
+
+  // Year filter buttons
+  const years = [];
+  for (let y = CONFIG.startYear; y <= CONFIG.endYear; y++) years.push(String(y));
+  document.getElementById('year-filters').innerHTML = [
+    `<button class="filter-btn active" data-year="all" onclick="setYear('all')">Todos</button>`,
+    ...years.map(y => `<button class="filter-btn" data-year="${y}" onclick="setYear('${y}')">${y}</button>`),
+  ].join('');
+
+  // Category filter buttons (exclude catch-all)
+  document.getElementById('cat-filters').innerHTML = [
+    `<button class="filter-btn active" data-cat="all" onclick="setCat('all')">Todas</button>`,
+    ...CONFIG.categories
+      .filter(c => c.pattern !== null)
+      .map(c => `<button class="filter-btn" data-cat="${c.key}" onclick="setCat('${c.key}')">${c.label}</button>`),
+  ].join('');
+}
+
+// ── Data ──────────────────────────────────────────────────────────────────────
 
 let allData = [], yearFilter = 'all', catFilter = 'all', charts = {};
 
@@ -305,10 +362,11 @@ function parseCSV(text) {
 }
 
 function classify(desc) {
-  const d = (desc||'').toUpperCase();
-  if (/INSTALAC|DC CHAR|ESTACION|CARGADOR|KW|MOD |RFID|ADAPTADOR|TA-DC|EAUS|ELA00/.test(d)) return 'inst';
-  if (/PLATAFORMA|CONFIGURAC|COMERCIALIZ|STRIPE|CONECTIV|RECARGA PARA|CUOTA|ANUAL DE PLAT/.test(d)) return 'com';
-  return 'otros';
+  const d = (desc || '').toUpperCase();
+  for (const cat of CONFIG.categories) {
+    if (cat.pattern && cat.pattern.test(d)) return cat.key;
+  }
+  return CONFIG.categories[CONFIG.categories.length - 1].key;
 }
 
 async function loadData() {
@@ -318,38 +376,43 @@ async function loadData() {
   try {
     await new Promise(async (resolve, reject) => {
       try {
-        const res = await fetch(SHEET_CSV_URL + '?t=' + Date.now());
+        const res = await fetch(CONFIG.sheetUrl + '?t=' + Date.now());
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const text = await res.text();
-          setLoaderProgress(60);
-          const rows = parseCSV(text);
-          const parsed = rows
-            .filter(r => r['FECHA'] && r['FECHA'].trim() && r['TOTAL'] && !isNaN(parseFloat(String(r['TOTAL']).replace(/[$,\s]/g,''))))
-            .map(r => {
-              let fecha = String(r['FECHA']||'').trim();
-              const dm = fecha.match(/(\w{3})\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
-              if (dm) {
-                const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
-                fecha = `${dm[4]}-${months[dm[2]]||'01'}-${dm[3].padStart(2,'0')}`;
-              }
-              return {
-                fecha, tipo:(r['TIPO DOC']||'').trim(), num:(r['Número de Control']||'').trim(),
-                receptor:(r['Receptor']||'').trim(), desc:(r['Descripción']||'').trim(),
-                total:parseFloat(String(r['TOTAL']).replace(/[$,\s]/g,''))||0,
-                saldo:parseFloat(String(r['Saldo de Cliente']||'0').replace(/[$,\s]/g,''))||0,
-                pago:(r['PAGO']||'').trim(), cat:classify(r['Descripción']||''),
-              };
-            });
-          if (parsed.length > 0) allData = parsed;
-          resolve();
+        setLoaderProgress(60);
+        const C = CONFIG.columns;
+        const rows = parseCSV(text);
+        const parsed = rows
+          .filter(r => r[C.fecha] && r[C.fecha].trim() && r[C.total] && !isNaN(parseFloat(String(r[C.total]).replace(/[$,\s]/g,''))))
+          .map(r => {
+            let fecha = String(r[C.fecha]||'').trim();
+            const dm = fecha.match(/(\w{3})\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
+            if (dm) {
+              const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+              fecha = `${dm[4]}-${months[dm[2]]||'01'}-${dm[3].padStart(2,'0')}`;
+            }
+            return {
+              fecha,
+              tipo:     (r[C.tipoDoc]    ||'').trim(),
+              num:      (r[C.numControl] ||'').trim(),
+              receptor: (r[C.receptor]   ||'').trim(),
+              desc:     (r[C.descripcion]||'').trim(),
+              total:    parseFloat(String(r[C.total]).replace(/[$,\s]/g,''))||0,
+              saldo:    parseFloat(String(r[C.saldo]||'0').replace(/[$,\s]/g,''))||0,
+              pago:     (r[C.pago]       ||'').trim(),
+              cat:      classify(r[C.descripcion]||''),
+            };
+          });
+        if (parsed.length > 0) allData = parsed;
+        resolve();
       } catch(e) { reject(e); }
     });
   } catch(err) {
     loadFallback();
   }
   setLoaderProgress(100);
-  document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-SV',{hour:'2-digit',minute:'2-digit'});
-  document.getElementById('fecha-footer').textContent = new Date().toLocaleDateString('es-SV',{day:'2-digit',month:'long',year:'numeric'});
+  document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString(CONFIG.locale,{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('fecha-footer').textContent = new Date().toLocaleDateString(CONFIG.locale,{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('badge-count').textContent = allData.length + ' facturas';
   update();
   document.getElementById('loader').classList.add('hidden');
@@ -390,6 +453,8 @@ function loadFallback() {
   ];
 }
 
+// ── Filtering ─────────────────────────────────────────────────────────────────
+
 function filtered() {
   return allData.filter(r => {
     if (yearFilter !== 'all' && (r.fecha||'').slice(0,4) !== yearFilter) return false;
@@ -409,18 +474,18 @@ function setCat(c) {
   update();
 }
 
-const MONTHS_ORDER = ['2025-02','2025-03','2025-04','2025-05','2025-06','2025-07','2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
-const MONTH_LABELS = {'2025-02':'Feb 25','2025-03':'Mar 25','2025-04':'Abr 25','2025-05':'May 25','2025-06':'Jun 25','2025-07':'Jul 25','2025-08':'Ago 25','2025-09':'Sep 25','2025-10':'Oct 25','2025-11':'Nov 25','2025-12':'Dic 25','2026-01':'Ene 26','2026-02':'Feb 26','2026-03':'Mar 26','2026-04':'Abr 26','2026-05':'May 26','2026-06':'Jun 26','2026-07':'Jul 26','2026-08':'Ago 26','2026-09':'Sep 26','2026-10':'Oct 26','2026-11':'Nov 26','2026-12':'Dic 26'};
+// ── Charts ────────────────────────────────────────────────────────────────────
 
 function destroyChart(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
 
 const baseScales = {
   x:{ ticks:{color:'#7a8fad',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(180,200,230,.4)'} },
-  y:{ ticks:{color:'#7a8fad',font:{family:'DM Mono',size:10},callback:v=>'$'+v.toLocaleString()}, grid:{color:'rgba(180,200,230,.4)'} }
+  y:{ ticks:{color:'#7a8fad',font:{family:'DM Mono',size:10},callback:v=>CONFIG.currency+v.toLocaleString()}, grid:{color:'rgba(180,200,230,.4)'} }
 };
 
 function buildCharts() {
   const data = filtered();
+  const c = CONFIG.colors;
 
   const byMonth = {};
   data.forEach(r => { const m = (r.fecha||'').slice(0,7); byMonth[m] = (byMonth[m]||0)+r.total; });
@@ -429,25 +494,27 @@ function buildCharts() {
   charts['mes'] = new Chart(document.getElementById('chartMes'), {
     type:'bar',
     data:{
-      labels: months.map(m=>MONTH_LABELS[m]||m),
+      labels: months.map(m => monthLabel(m)),
       datasets:[{ label:'USD', data:months.map(m=>byMonth[m]),
-        backgroundColor: months.map(m=>byMonth[m]>20000?'rgba(0,178,107,.7)':'rgba(0,114,245,.6)'),
-        borderColor:     months.map(m=>byMonth[m]>20000?'#00b26b':'#0072f5'),
+        backgroundColor: months.map(m => byMonth[m] > CONFIG.highValueThreshold ? hexAlpha(c.accent2,.7) : hexAlpha(c.accent,.6)),
+        borderColor:     months.map(m => byMonth[m] > CONFIG.highValueThreshold ? c.accent2 : c.accent),
         borderWidth:1, borderRadius:4 }]
     },
     options:{ responsive:true, maintainAspectRatio:true, plugins:{legend:{display:false}}, scales:baseScales }
   });
 
-  const byCat = {inst:0,com:0,otros:0};
-  data.forEach(r => byCat[r.cat] = (byCat[r.cat]||0)+r.total);
+  const byCat = {};
+  CONFIG.categories.forEach(cat => byCat[cat.key] = 0);
+  data.forEach(r => byCat[r.cat] = (byCat[r.cat]||0) + r.total);
   destroyChart('cat');
   charts['cat'] = new Chart(document.getElementById('chartCat'), {
     type:'doughnut',
     data:{
-      labels:['Instalación / Equipo','Comercialización / Svc','Otros'],
-      datasets:[{ data:[byCat.inst,byCat.com,byCat.otros],
-        backgroundColor:['rgba(245,158,11,.75)','rgba(0,114,245,.7)','rgba(229,62,62,.65)'],
-        borderColor:['#f59e0b','#0072f5','#e53e3e'], borderWidth:1.5 }]
+      labels: CONFIG.categories.map(cat => cat.chartLabel),
+      datasets:[{ data: CONFIG.categories.map(cat => byCat[cat.key]),
+        backgroundColor: CONFIG.categories.map(cat => hexAlpha(cat.color,.75)),
+        borderColor:     CONFIG.categories.map(cat => cat.color),
+        borderWidth:1.5 }]
     },
     options:{ responsive:true, maintainAspectRatio:true, cutout:'65%',
       plugins:{legend:{position:'bottom',labels:{color:'#7a8fad',font:{family:'DM Mono',size:11},padding:14}}} }
@@ -459,48 +526,50 @@ function buildCharts() {
     byClient[k] = (byClient[k]||0)+r.total;
   });
   const sortedC = Object.entries(byClient).sort((a,b)=>b[1]-a[1]).slice(0,7);
+  const barColors = [c.accent,c.accent2,c.accent3,c.danger].flatMap(col=>[hexAlpha(col,.75),hexAlpha(col,.45)]).slice(0,7);
   destroyChart('cli');
   charts['cli'] = new Chart(document.getElementById('chartClientes'), {
     type:'bar',
     data:{
       labels:sortedC.map(e=>e[0]),
       datasets:[{ label:'USD', data:sortedC.map(e=>e[1]), borderRadius:4, borderWidth:0,
-        backgroundColor:['rgba(0,114,245,.75)','rgba(0,178,107,.75)','rgba(245,158,11,.75)','rgba(229,62,62,.7)','rgba(0,114,245,.45)','rgba(0,178,107,.45)','rgba(245,158,11,.45)'] }]
+        backgroundColor: barColors }]
     },
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:true,
       plugins:{legend:{display:false}},
       scales:{
-        x:{ ticks:{color:'#7a8fad',font:{family:'DM Mono',size:10},callback:v=>'$'+v.toLocaleString()}, grid:{color:'rgba(180,200,230,.4)'} },
+        x:{ ticks:{color:'#7a8fad',font:{family:'DM Mono',size:10},callback:v=>CONFIG.currency+v.toLocaleString()}, grid:{color:'rgba(180,200,230,.4)'} },
         y:{ ticks:{color:'#7a8fad',font:{family:'DM Mono',size:10}}, grid:{display:false} }
       }
     }
   });
 
-  const paid = data.filter(r=>r.pago==='SI').reduce((s,r)=>s+r.total,0);
-  const pend = data.filter(r=>r.pago!=='SI').reduce((s,r)=>s+r.total,0);
+  const paid = data.filter(r=>r.pago===CONFIG.paidValue).reduce((s,r)=>s+r.total,0);
+  const pend = data.filter(r=>r.pago!==CONFIG.paidValue).reduce((s,r)=>s+r.total,0);
   destroyChart('pago');
   charts['pago'] = new Chart(document.getElementById('chartPago'), {
     type:'doughnut',
     data:{
       labels:['Pagado','Pendiente'],
       datasets:[{ data:[paid,pend],
-        backgroundColor:['rgba(0,178,107,.75)','rgba(229,62,62,.65)'],
-        borderColor:['#00b26b','#e53e3e'], borderWidth:1.5 }]
+        backgroundColor:[hexAlpha(c.accent2,.75),hexAlpha(c.danger,.65)],
+        borderColor:[c.accent2,c.danger], borderWidth:1.5 }]
     },
     options:{ responsive:true, maintainAspectRatio:true, cutout:'65%',
       plugins:{legend:{position:'bottom',labels:{color:'#7a8fad',font:{family:'DM Mono',size:11},padding:14}}} }
   });
 }
 
+// ── KPIs ──────────────────────────────────────────────────────────────────────
+
 function updateKPIs() {
-  const data  = filtered();
+  const data   = filtered();
   const total  = data.reduce((s,r)=>s+r.total,0);
-  const pagado = data.filter(r=>r.pago==='SI').reduce((s,r)=>s+r.total,0);
+  const pagado = data.filter(r=>r.pago===CONFIG.paidValue).reduce((s,r)=>s+r.total,0);
   const pend   = data.reduce((s,r)=>s+(r.saldo||0),0);
   const pendN  = data.filter(r=>(r.saldo||0)>0).length;
-  const pagN   = data.filter(r=>r.pago==='SI').length;
+  const pagN   = data.filter(r=>r.pago===CONFIG.paidValue).length;
   const tipos  = [...new Set(data.map(r=>r.tipo))].join(' · ');
-  const fmt    = v => '$'+v.toLocaleString('es-SV',{minimumFractionDigits:2,maximumFractionDigits:2});
   document.getElementById('kpi-total').textContent     = fmt(total);
   document.getElementById('kpi-pagado').textContent    = fmt(pagado);
   document.getElementById('kpi-pagado-sub').textContent= pagN+' facturas pagadas';
@@ -512,6 +581,8 @@ function updateKPIs() {
   document.getElementById('badge-count').textContent   = allData.length + ' facturas';
 }
 
+// ── Table ─────────────────────────────────────────────────────────────────────
+
 function renderTable() {
   const search = (document.getElementById('searchInput').value||'').toLowerCase();
   const data = filtered().filter(r =>
@@ -521,12 +592,19 @@ function renderTable() {
   );
   const tbody = document.getElementById('tableBody');
   tbody.innerHTML = data.map((r,i) => {
-    const tipoBadge = r.tipo.includes('FISCAL') ? `<span class="badge badge-ccf">CCF</span>` : `<span class="badge badge-fac">FACT</span>`;
-    const catBadge  = r.cat==='inst' ? `<span class="badge badge-inst">Instalación</span>` : r.cat==='com' ? `<span class="badge badge-com">Comercial</span>` : `<span class="badge badge-otros">Otros</span>`;
-    const pagoBadge = r.pago==='SI' ? `<span class="badge badge-si">✓ Pagado</span>` : `<span class="badge badge-pend">⚠ Pendiente 30%</span>`;
+    const tipoBadge = r.tipo.includes(CONFIG.ccfKeyword)
+      ? `<span class="badge badge-ccf">CCF</span>`
+      : `<span class="badge badge-fac">FACT</span>`;
+    const catBadge = r.cat === 'inst'
+      ? `<span class="badge badge-inst">Instalación</span>`
+      : r.cat === 'com'
+        ? `<span class="badge badge-com">Comercial</span>`
+        : `<span class="badge badge-otros">Otros</span>`;
+    const pagoBadge = r.pago === CONFIG.paidValue
+      ? `<span class="badge badge-si">✓ Pagado</span>`
+      : `<span class="badge badge-pend">⚠ ${r.pago||'Pendiente'}</span>`;
     let fechaFmt = r.fecha;
-    try { fechaFmt = new Date(r.fecha+'T12:00:00').toLocaleDateString('es-SV',{day:'2-digit',month:'short',year:'2-digit'}); } catch(e){}
-    const totalFmt = '$'+r.total.toLocaleString('es-SV',{minimumFractionDigits:2,maximumFractionDigits:2});
+    try { fechaFmt = new Date(r.fecha+'T12:00:00').toLocaleDateString(CONFIG.locale,{day:'2-digit',month:'short',year:'2-digit'}); } catch(e){}
     return `<tr>
       <td style="color:var(--muted)">${i+1}</td>
       <td style="white-space:nowrap">${fechaFmt}</td>
@@ -535,15 +613,17 @@ function renderTable() {
       <td style="max-width:180px">${r.receptor}</td>
       <td style="max-width:260px;color:var(--muted);font-size:.67rem">${r.desc}</td>
       <td>${catBadge}</td>
-      <td style="text-align:right;color:var(--accent2);font-weight:600;white-space:nowrap">${totalFmt}</td>
+      <td style="text-align:right;color:var(--accent2);font-weight:600;white-space:nowrap">${fmt(r.total)}</td>
       <td>${pagoBadge}</td>
     </tr>`;
   }).join('');
   const subTotal = data.reduce((s,r)=>s+r.total,0);
-  document.getElementById('tfoot-total').textContent = '$'+subTotal.toLocaleString('es-SV',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('tfoot-total').textContent = fmt(subTotal);
 }
 
 function update() { updateKPIs(); buildCharts(); renderTable(); }
+
+applyConfig();
 loadData();
 </script>
 </body>
