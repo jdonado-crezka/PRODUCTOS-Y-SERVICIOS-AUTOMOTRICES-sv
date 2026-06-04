@@ -316,11 +316,11 @@ async function loadData() {
   btn.classList.add('spinning');
   setLoaderProgress(10);
   try {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      window.__gsCallback = (json) => {
-        try {
-          const text = json.data;
+    await new Promise(async (resolve, reject) => {
+      try {
+        const res = await fetch(SHEET_CSV_URL + '?t=' + Date.now());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
           setLoaderProgress(60);
           const rows = parseCSV(text);
           const parsed = rows
@@ -342,12 +342,7 @@ async function loadData() {
             });
           if (parsed.length > 0) allData = parsed;
           resolve();
-        } catch(e) { reject(e); }
-      };
-      script.src = SHEET_CSV_URL + '?callback=__gsCallback&t=' + Date.now();
-      script.onerror = reject;
-      document.head.appendChild(script);
-      setTimeout(() => reject(new Error('timeout')), 10000);
+      } catch(e) { reject(e); }
     });
   } catch(err) {
     loadFallback();
